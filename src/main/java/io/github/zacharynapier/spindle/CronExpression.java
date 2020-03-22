@@ -1,6 +1,10 @@
 package io.github.zacharynapier.spindle;
 
+import java.time.LocalDate;
+import java.time.ZonedDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * A standard five-field cron expression: minute, hour, day of month, month and day of week.
@@ -10,6 +14,9 @@ import java.util.Objects;
  * covers the whole field. Sunday is both 0 and 7 in the day of week field.
  */
 public final class CronExpression {
+
+    // Far enough to reach Feb 29 across a skipped leap year such as 2100.
+    private static final int MAX_YEARS_AHEAD = 8;
 
     private enum Field {
         MINUTE("minute", 0, 59),
@@ -71,9 +78,41 @@ public final class CronExpression {
         }
     }
 
+    /**
+     * Returns the first time strictly after {@code after} that matches this expression, in the
+     * same zone.
+     *
+     * <p>Returns empty if the expression can never match, such as {@code 0 0 30 2 *}.
+     */
+    public Optional<ZonedDateTime> next(ZonedDateTime after) {
+        Objects.requireNonNull(after, "after");
+        ZonedDateTime t = after.truncatedTo(ChronoUnit.MINUTES).plusMinutes(1);
+        int lastYear = t.getYear() + MAX_YEARS_AHEAD;
+
+        while (t.getYear() <= lastYear) {
+            if (!has(months, t.getMonthValue())) {
+                t = t.plusMonths(1).withDayOfMonth(1).truncatedTo(ChronoUnit.DAYS);
+            } else if (!matchesDay(t.toLocalDate())) {
+                t = t.plusDays(1).truncatedTo(ChronoUnit.DAYS);
+            } else if (!has(hours, t.getHour())) {
+                t = t.plusHours(1).truncatedTo(ChronoUnit.HOURS);
+            } else if (!has(minutes, t.getMinute())) {
+                t = t.plusMinutes(1);
+            } else {
+                return Optional.of(t);
+            }
+        }
+        return Optional.empty();
+    }
+
     @Override
     public String toString() {
         return expression;
+    }
+
+    private boolean matchesDay(LocalDate date) {
+        return has(daysOfMonth, date.getDayOfMonth())
+                && has(daysOfWeek, date.getDayOfWeek().getValue() % 7);
     }
 
     private static boolean has(long bits, int value) {
