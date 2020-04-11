@@ -18,6 +18,7 @@ import java.util.function.BiConsumer;
  * <pre>{@code
  * Spindle spindle = Spindle.builder()
  *         .threads(2)
+ *         .retry(RetryPolicy.exponential(5, Duration.ofSeconds(1)))
  *         .build();
  *
  * spindle.schedule("0 * * * *", () -> report.refresh());
@@ -29,17 +30,24 @@ public final class Spindle {
 
     private final ScheduledThreadPoolExecutor executor;
     private final Clock clock;
+    private final RetryPolicy retry;
     private final BiConsumer<ScheduledJob, Exception> onFailure;
 
     private Spindle(Builder builder) {
         this.executor = new ScheduledThreadPoolExecutor(builder.threads, new NamedThreadFactory());
         this.executor.setRemoveOnCancelPolicy(true);
         this.clock = builder.clock;
+        this.retry = builder.retry;
         this.onFailure = builder.onFailure;
     }
 
     public static Builder builder() {
         return new Builder();
+    }
+
+    /** Schedules {@code job} using the scheduler's default retry policy. */
+    public ScheduledJob schedule(String cron, Job job) {
+        return schedule(cron, job, retry);
     }
 
     /**
@@ -48,8 +56,9 @@ public final class Spindle {
      * @throws IllegalArgumentException if the expression is malformed or can never fire
      * @throws IllegalStateException if the scheduler has been shut down
      */
-    public ScheduledJob schedule(String cron, Job job) {
+    public ScheduledJob schedule(String cron, Job job, RetryPolicy retry) {
         Objects.requireNonNull(job, "job");
+        Objects.requireNonNull(retry, "retry");
         CronExpression expression = CronExpression.parse(cron);
         if (executor.isShutdown()) {
             throw new IllegalStateException("Scheduler has been shut down");
@@ -58,7 +67,7 @@ public final class Spindle {
         if (expression.next(now).isEmpty()) {
             throw new IllegalArgumentException("Cron expression '" + cron + "' never fires");
         }
-        ScheduledJob scheduled = new ScheduledJob(this, expression, job);
+        ScheduledJob scheduled = new ScheduledJob(this, expression, job, retry);
         scheduled.scheduleAfter(now);
         return scheduled;
     }
@@ -102,6 +111,7 @@ public final class Spindle {
 
         private int threads = 1;
         private Clock clock = Clock.systemDefaultZone();
+        private RetryPolicy retry = RetryPolicy.none();
         private BiConsumer<ScheduledJob, Exception> onFailure =
                 (job, e) -> LOG.log(System.Logger.Level.WARNING, job + " failed", e);
 
@@ -128,7 +138,13 @@ public final class Spindle {
             return this;
         }
 
-        /** Called when a run throws. Defaults to logging a warning. */
+        /** Retry policy for jobs scheduled without one. Defaults to {@link RetryPolicy#none()}. */
+        public Builder retry(RetryPolicy retry) {
+            this.retry = Objects.requireNonNull(retry, "retry");
+            return this;
+        }
+
+        /** Called when a run fails its last attempt. Defaults to logging a warning. */
         public Builder onFailure(BiConsumer<ScheduledJob, Exception> onFailure) {
             this.onFailure = Objects.requireNonNull(onFailure, "onFailure");
             return this;
