@@ -3,6 +3,8 @@ package io.github.zacharynapier.spindle;
 import java.time.LocalDate;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -11,9 +13,19 @@ import java.util.Optional;
  *
  * <p>Fields accept {@code *}, single values, ranges ({@code 1-5}), lists ({@code 1,15,30}) and
  * steps over a range or from a start value ({@code 0-30/5}, {@code 5/15}); a step after {@code *}
- * covers the whole field. Sunday is both 0 and 7 in the day of week field.
+ * covers the whole field. Months and days of week also accept three-letter names, and Sunday is
+ * both 0 and 7.
  */
 public final class CronExpression {
+
+    private static final Map<String, String> MACROS = Map.of(
+            "@yearly", "0 0 1 1 *",
+            "@annually", "0 0 1 1 *",
+            "@monthly", "0 0 1 * *",
+            "@weekly", "0 0 * * 0",
+            "@daily", "0 0 * * *",
+            "@midnight", "0 0 * * *",
+            "@hourly", "0 * * * *");
 
     // Far enough to reach Feb 29 across a skipped leap year such as 2100.
     private static final int MAX_YEARS_AHEAD = 8;
@@ -22,17 +34,20 @@ public final class CronExpression {
         MINUTE("minute", 0, 59),
         HOUR("hour", 0, 23),
         DAY_OF_MONTH("day of month", 1, 31),
-        MONTH("month", 1, 12),
-        DAY_OF_WEEK("day of week", 0, 7);
+        MONTH("month", 1, 12,
+                "JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"),
+        DAY_OF_WEEK("day of week", 0, 7, "SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT");
 
         final String label;
         final int min;
         final int max;
+        final String[] names;
 
-        Field(String label, int min, int max) {
+        Field(String label, int min, int max, String... names) {
             this.label = label;
             this.min = min;
             this.max = max;
+            this.names = names;
         }
     }
 
@@ -58,14 +73,16 @@ public final class CronExpression {
     }
 
     /**
-     * Parses a five-field expression.
+     * Parses a five-field expression or one of {@code @yearly}, {@code @monthly},
+     * {@code @weekly}, {@code @daily} and {@code @hourly}.
      *
      * @throws IllegalArgumentException if the expression is malformed
      */
     public static CronExpression parse(String expression) {
         Objects.requireNonNull(expression, "expression");
         String trimmed = expression.trim();
-        String[] fields = trimmed.split("\\s+");
+        String expanded = MACROS.getOrDefault(trimmed.toLowerCase(Locale.ROOT), trimmed);
+        String[] fields = expanded.split("\\s+");
         if (fields.length != 5) {
             throw new IllegalArgumentException(
                     "Expected 5 fields in cron expression '" + expression + "' but found " + fields.length);
@@ -146,10 +163,10 @@ public final class CronExpression {
             start = spec.min;
             end = spec.max;
         } else if (dash >= 0) {
-            start = parseNumber(range.substring(0, dash), spec);
-            end = parseNumber(range.substring(dash + 1), spec);
+            start = parseValue(range.substring(0, dash), spec);
+            end = parseValue(range.substring(dash + 1), spec);
         } else {
-            start = parseNumber(range, spec);
+            start = parseValue(range, spec);
             end = slash >= 0 ? spec.max : start;
         }
 
@@ -166,6 +183,16 @@ public final class CronExpression {
             bits |= 1L << i;
         }
         return bits;
+    }
+
+    private static int parseValue(String value, Field spec) {
+        String upper = value.toUpperCase(Locale.ROOT);
+        for (int i = 0; i < spec.names.length; i++) {
+            if (spec.names[i].equals(upper)) {
+                return spec.min + i;
+            }
+        }
+        return parseNumber(value, spec);
     }
 
     private static int parseNumber(String value, Field spec) {

@@ -37,6 +37,14 @@ class CronExpressionTest {
             "0 0 31 * *         | 2020-04-01T00:00    | 2020-05-31T00:00",
             "0 0 29 2 *         | 2021-03-01T00:00    | 2024-02-29T00:00",
             "0 0 29 2 *         | 2096-03-01T00:00    | 2104-02-29T00:00",
+            // names and macros
+            "0 0 * JAN,JUL mon  | 2020-02-01T00:00    | 2020-07-06T00:00",
+            "15 4 * * sun       | 2020-05-23T00:00    | 2020-05-24T04:15",
+            "@daily             | 2020-05-23T10:00    | 2020-05-24T00:00",
+            "@hourly            | 2020-05-23T10:00    | 2020-05-23T11:00",
+            "@weekly            | 2020-05-23T10:00    | 2020-05-24T00:00",
+            "@monthly           | 2020-05-23T10:00    | 2020-06-01T00:00",
+            "@yearly            | 2020-05-23T10:00    | 2021-01-01T00:00",
     })
     void computesNextFireTime(String expression, String after, String expected) {
         assertNext(expression, after, expected);
@@ -77,6 +85,7 @@ class CronExpressionTest {
             "30-10 * * * *",
             "1,,2 * * * *",
             "a * * * *",
+            "* * * FOO *",
             "-5 * * * *",
     })
     void rejectsMalformedExpressions(String expression) {
