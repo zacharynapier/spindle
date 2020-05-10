@@ -73,7 +73,7 @@ public final class ScheduledJob {
         try {
             job.run();
         } catch (Exception e) {
-            if (attempt < retry.maxAttempts() && !cancelled) {
+            if (attempt < retry.maxAttempts() && !cancelled && !owner.isShutdown()) {
                 pending = owner.submit(() -> attempt(attempt + 1), retry.delayAfter(attempt));
                 return;
             }

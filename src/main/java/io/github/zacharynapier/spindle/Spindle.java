@@ -5,6 +5,7 @@ import java.time.Duration;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.Objects;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadFactory;
@@ -23,8 +24,11 @@ import java.util.function.BiConsumer;
  *
  * spindle.schedule("0 * * * *", () -> report.refresh());
  * }</pre>
+ *
+ * <p>{@link #close()} stops new fires, waits for running jobs to finish and then interrupts any
+ * that outlast the shutdown timeout.
  */
-public final class Spindle {
+public final class Spindle implements AutoCloseable {
 
     private static final System.Logger LOG = System.getLogger(Spindle.class.getName());
 
@@ -32,13 +36,16 @@ public final class Spindle {
     private final Clock clock;
     private final RetryPolicy retry;
     private final BiConsumer<ScheduledJob, Exception> onFailure;
+    private final Duration shutdownTimeout;
 
     private Spindle(Builder builder) {
         this.executor = new ScheduledThreadPoolExecutor(builder.threads, new NamedThreadFactory());
         this.executor.setRemoveOnCancelPolicy(true);
+        this.executor.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
         this.clock = builder.clock;
         this.retry = builder.retry;
         this.onFailure = builder.onFailure;
+        this.shutdownTimeout = builder.shutdownTimeout;
     }
 
     public static Builder builder() {
@@ -72,7 +79,7 @@ public final class Spindle {
         return scheduled;
     }
 
-    /** Stops accepting new jobs. Runs already in progress continue; this does not wait for them. */
+    /** Stops new fires and retries. Runs already in progress continue; this does not wait for them. */
     public void shutdown() {
         executor.shutdown();
     }
@@ -91,12 +98,30 @@ public final class Spindle {
         return executor.awaitTermination(timeout.toNanos(), TimeUnit.NANOSECONDS);
     }
 
+    /** Shuts down gracefully, interrupting jobs still running after the shutdown timeout. */
+    @Override
+    public void close() {
+        shutdown();
+        try {
+            if (!awaitTermination(shutdownTimeout)) {
+                shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+    }
+
     ZonedDateTime now() {
         return ZonedDateTime.now(clock);
     }
 
     ScheduledFuture<?> submit(Runnable task, Duration delay) {
-        return executor.schedule(task, Math.max(0, delay.toMillis()), TimeUnit.MILLISECONDS);
+        try {
+            return executor.schedule(task, Math.max(0, delay.toMillis()), TimeUnit.MILLISECONDS);
+        } catch (RejectedExecutionException e) {
+            return null; // shutting down
+        }
     }
 
     void reportFailure(ScheduledJob job, Exception failure) {
@@ -114,6 +139,7 @@ public final class Spindle {
         private RetryPolicy retry = RetryPolicy.none();
         private BiConsumer<ScheduledJob, Exception> onFailure =
                 (job, e) -> LOG.log(System.Logger.Level.WARNING, job + " failed", e);
+        private Duration shutdownTimeout = Duration.ofSeconds(30);
 
         private Builder() {
         }
@@ -147,6 +173,12 @@ public final class Spindle {
         /** Called when a run fails its last attempt. Defaults to logging a warning. */
         public Builder onFailure(BiConsumer<ScheduledJob, Exception> onFailure) {
             this.onFailure = Objects.requireNonNull(onFailure, "onFailure");
+            return this;
+        }
+
+        /** How long {@link Spindle#close()} waits for running jobs. Defaults to 30 seconds. */
+        public Builder shutdownTimeout(Duration shutdownTimeout) {
+            this.shutdownTimeout = Objects.requireNonNull(shutdownTimeout, "shutdownTimeout");
             return this;
         }
 
