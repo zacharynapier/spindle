@@ -58,6 +58,19 @@ class CronExpressionTest {
     }
 
     @Test
+    void dayOfMonthAndDayOfWeekMatchEitherWhenBothRestricted() {
+        // The 13th, or any Friday.
+        assertNext("0 0 13 * 5", "2020-03-01T00:00", "2020-03-06T00:00");
+        assertNext("0 0 13 * 5", "2020-03-07T00:00", "2020-03-13T00:00");
+        assertNext("0 0 13 * 5", "2020-03-13T00:00", "2020-03-20T00:00");
+    }
+
+    @Test
+    void dayOfWeekAloneWhenDayOfMonthIsWildcard() {
+        assertNext("0 0 */2 * 5", "2020-03-01T00:00", "2020-03-13T00:00");
+    }
+
+    @Test
     void neverFires() {
         ZonedDateTime from = ZonedDateTime.of(2020, 1, 1, 0, 0, 0, 0, UTC);
         assertTrue(CronExpression.parse("0 0 30 2 *").next(from).isEmpty());

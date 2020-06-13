@@ -14,7 +14,8 @@ import java.util.Optional;
  * <p>Fields accept {@code *}, single values, ranges ({@code 1-5}), lists ({@code 1,15,30}) and
  * steps over a range or from a start value ({@code 0-30/5}, {@code 5/15}); a step after {@code *}
  * covers the whole field. Months and days of week also accept three-letter names, and Sunday is
- * both 0 and 7.
+ * both 0 and 7. As in Vixie cron, when both day of month and
+ * day of week are restricted, a day matching either one fires.
  */
 public final class CronExpression {
 
@@ -57,6 +58,8 @@ public final class CronExpression {
     private final long daysOfMonth;
     private final long months;
     private final long daysOfWeek;
+    private final boolean anyDayOfMonth;
+    private final boolean anyDayOfWeek;
 
     private CronExpression(String expression, String[] fields) {
         this.expression = expression;
@@ -70,6 +73,9 @@ public final class CronExpression {
             dow = (dow | 1L) & ~(1L << 7);
         }
         this.daysOfWeek = dow;
+
+        this.anyDayOfMonth = fields[2].startsWith("*");
+        this.anyDayOfWeek = fields[4].startsWith("*");
     }
 
     /**
@@ -128,8 +134,12 @@ public final class CronExpression {
     }
 
     private boolean matchesDay(LocalDate date) {
-        return has(daysOfMonth, date.getDayOfMonth())
-                && has(daysOfWeek, date.getDayOfWeek().getValue() % 7);
+        boolean dayOfMonth = has(daysOfMonth, date.getDayOfMonth());
+        boolean dayOfWeek = has(daysOfWeek, date.getDayOfWeek().getValue() % 7);
+        if (anyDayOfMonth || anyDayOfWeek) {
+            return dayOfMonth && dayOfWeek;
+        }
+        return dayOfMonth || dayOfWeek;
     }
 
     private static boolean has(long bits, int value) {
