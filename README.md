@@ -80,6 +80,9 @@ Shorthands: `@yearly` (or `@annually`), `@monthly`, `@weekly`, `@daily` (or `@mi
 When both day of month and day of week are restricted, a day matching either one fires, as in
 standard cron. `0 0 13 * FRI` runs on the 13th of every month and on every Friday.
 
+Expressions are evaluated in the scheduler's zone using wall-clock time. A time skipped when
+clocks spring forward runs right after the gap; a time repeated when clocks fall back runs once.
+
 You can also use the parser on its own:
 
 ```java

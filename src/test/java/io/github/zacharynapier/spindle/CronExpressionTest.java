@@ -83,6 +83,25 @@ class CronExpressionTest {
         assertEquals(ZonedDateTime.of(2020, 5, 23, 12, 0, 0, 0, NEW_YORK), next);
     }
 
+    @Test
+    void timeSkippedBySpringForwardFiresAfterTheGap() {
+        // 2020-03-08 02:00 EST jumps to 03:00 EDT.
+        ZonedDateTime from = ZonedDateTime.parse("2020-03-08T01:00-05:00[America/New_York]");
+        ZonedDateTime next = CronExpression.parse("30 2 * * *").next(from).orElseThrow();
+        assertEquals(ZonedDateTime.parse("2020-03-08T03:30-04:00[America/New_York]"), next);
+    }
+
+    @Test
+    void timeRepeatedByFallBackFiresOnce() {
+        // 2020-11-01 02:00 EDT falls back to 01:00 EST.
+        CronExpression cron = CronExpression.parse("30 1 * * *");
+        ZonedDateTime first = cron.next(ZonedDateTime.parse("2020-11-01T00:00-04:00[America/New_York]")).orElseThrow();
+        assertEquals(ZonedDateTime.parse("2020-11-01T01:30-04:00[America/New_York]"), first);
+
+        ZonedDateTime second = cron.next(first).orElseThrow();
+        assertEquals(ZonedDateTime.parse("2020-11-02T01:30-05:00[America/New_York]"), second);
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {
             "",

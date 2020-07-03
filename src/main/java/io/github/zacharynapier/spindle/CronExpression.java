@@ -1,6 +1,7 @@
 package io.github.zacharynapier.spindle;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.Locale;
@@ -103,13 +104,15 @@ public final class CronExpression {
 
     /**
      * Returns the first time strictly after {@code after} that matches this expression, in the
-     * same zone.
+     * same zone. Matching uses wall-clock time: a time skipped by a daylight saving gap fires at
+     * the corresponding instant after the gap, and a time repeated when clocks fall back fires
+     * once.
      *
      * <p>Returns empty if the expression can never match, such as {@code 0 0 30 2 *}.
      */
     public Optional<ZonedDateTime> next(ZonedDateTime after) {
         Objects.requireNonNull(after, "after");
-        ZonedDateTime t = after.truncatedTo(ChronoUnit.MINUTES).plusMinutes(1);
+        LocalDateTime t = after.toLocalDateTime().truncatedTo(ChronoUnit.MINUTES).plusMinutes(1);
         int lastYear = t.getYear() + MAX_YEARS_AHEAD;
 
         while (t.getYear() <= lastYear) {
@@ -122,7 +125,7 @@ public final class CronExpression {
             } else if (!has(minutes, t.getMinute())) {
                 t = t.plusMinutes(1);
             } else {
-                return Optional.of(t);
+                return Optional.of(ZonedDateTime.ofLocal(t, after.getZone(), after.getOffset()));
             }
         }
         return Optional.empty();
