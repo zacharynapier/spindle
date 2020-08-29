@@ -9,7 +9,14 @@ cache every five minutes or pruning old rows overnight, where Quartz is more tha
 
 ## Installation
 
-Requires Java 11 or later.
+Requires Java 11 or later. spindle isn't published to Maven Central, so install it to your local repository first:
+
+```sh
+git clone https://github.com/zacharynapier/spindle.git
+cd spindle && mvn install
+```
+
+Then add the dependency.
 
 Maven:
 
@@ -21,7 +28,7 @@ Maven:
 </dependency>
 ```
 
-Gradle:
+Gradle (with `mavenLocal()` in your repositories):
 
 ```groovy
 implementation 'io.github.zacharynapier:spindle:0.1.0'
